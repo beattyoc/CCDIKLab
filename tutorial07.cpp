@@ -4,6 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <Windows.h>
+#include <cmath>
 // Include GLEW
 #include <GL/glew.h>
 
@@ -18,6 +19,7 @@ GLFWwindow* window;
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/norm.hpp>
+#include <glm/gtx/vector_angle.hpp>
 using namespace glm;
 
 #include <common/shader.hpp>
@@ -27,20 +29,26 @@ using namespace glm;
 #include <common/bone.hpp>
 #include <common/skeleton.hpp>
 
+//#define NUMBONES 16
+#define NUMBONES 3
 
-#define NUMBONES 16
-
-glm::mat4 ViewMatrix, ModelMatrix, ProjectionMatrix, TranslationMatrix, RotationMatrix, ScalingMatrix, MVP;
+glm::mat4 ViewMatrix, ModelMatrix, ProjectionMatrix, TranslationMatrix, RotationMatrix, ScalingMatrix, MVP, targetTranslationMatrix, targetModelMatrix;
 GLuint MatrixID, Texture, TextureID, vertexbuffer, uvbuffer, VertexArrayID, programID;
 std::vector<glm::vec3> vertices;
+bool updated = false;
 
 void drawBone(Bone bone, mat4 ProjectionMatrix, mat4 ViewMatrix);
 void drawSkeleton(Skeleton skeleton, mat4 ProjectionMatrix, mat4 ViewMatrix);
 void checkKeys(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime);
 void playAnimation(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime);
+void CCD();
+void drawTarget(mat4 ProjectionMatrix, mat4 ViewMatrix, mat4 targetModelMatrix);
 
 Bone bone[NUMBONES];
 Skeleton skeleton = Skeleton(NUMBONES);
+
+Bone lowerArm, upperArm, hand;
+
 
 //----- Camera Variables --------
 glm::vec3 view_angles;
@@ -51,6 +59,7 @@ bool camMoved = true;
 
 //------ Transformations -------
 float rotAngle = 0.005f;
+glm::vec3 nullVec(0, 0, 0);
 glm::vec3 left(-0.1, 0, 0);
 glm::vec3 right(0.1, 0, 0);
 glm::vec3 back(0, 0, -0.1);
@@ -58,6 +67,9 @@ glm::vec3 forth(0, 0, 0.1);
 glm::vec3 axisX(1, 0, 0);
 glm::vec3 axisY(0, 1, 0);
 glm::vec3 axisZ(0, 0, 1);
+
+glm::vec3 targetPos(4.0f, 6.0f, 0.0f);
+glm::vec3 targetScale(0.25f, 0.25f, 0.25f);
 
 int main( void )
 {
@@ -119,7 +131,7 @@ int main( void )
 	MatrixID = glGetUniformLocation(programID, "MVP");
 
 	// Load the texture
-	Texture = loadDDS("uvmap.DDS");
+	Texture = loadDDS("Grey.DDS");
 	//Texture = loadDDS("SopCamel1.DDS");
 
 	// Get a handle for our "myTextureSampler" uniform
@@ -129,7 +141,7 @@ int main( void )
 	//std::vector<glm::vec3> vertices;
 	std::vector<glm::vec2> uvs;
 	std::vector<glm::vec3> normals; // Won't be used at the moment.
-	bool res = loadOBJ("cube.obj", vertices, uvs, normals);
+	bool res = loadOBJ("cubeBase.obj", vertices, uvs, normals);
 
 	// Load it into a VBO
 
@@ -158,8 +170,12 @@ int main( void )
 	//ModelMatrix = TranslationMatrix * RotationMatrix * ScalingMatrix;
 	//MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;
 
+	targetTranslationMatrix = translate(mat4(), targetPos);
+	targetModelMatrix = targetTranslationMatrix * mat4(1.0) * scale(mat4(), targetScale);
 
 	//------------------ Create Bones --------------------------
+	// lab 3 create bones
+	/*
 	float x = 0.0f;
 	float increment = 2.0f;
 	float initialY = 3.0f;
@@ -224,10 +240,16 @@ int main( void )
 		y += 5.0f;
 	}
 	*/
-
+	
+	// lab 4 bones
+	vec3 scale = vec3(1, 1, 1);
+	upperArm = Bone(0, vec3(0, 0, 0), scale, vec3(0,0,0));
+	lowerArm = Bone(1, vec3(0, 2, 0), scale, vec3(0, -2, 0));
+	hand = Bone(2, vec3(0, 4, 0), scale, vec3(0, -4, 0));
 
 	//----------------- Make relationships ----------------
-
+	// lab 3 bone relationships
+	/*
 	//palm//root
 	bone[0].isRoot = true;
 	for (int i = 1; i < NUMBONES; i++)
@@ -284,14 +306,32 @@ int main( void )
 	}
 	*/
 
-	//------------------ Load Skeleton ------------------------
-	//skeleton = Skeleton(NUMBONES);
+	// lab 4 relationships
+	//upperArm.isRoot = true;
+	upperArm.addChild(&hand);
+	upperArm.addChild(&lowerArm);
 
+	lowerArm.addParent(&upperArm);
+	lowerArm.addChild(&hand);
+
+	hand.addParent(&lowerArm);
+
+	//------------------ Load Skeleton ------------------------
+	// lab 3 skeleton
+	/*
+	//skeleton = Skeleton(NUMBONES);
 	for (int i = 0; i < NUMBONES; i++)
 	{
 		skeleton.loadBone(&bone[i]);
 	}
+	*/
 
+	// lab 4 skeleton
+	skeleton.loadBone(&upperArm);
+	skeleton.loadBone(&lowerArm);
+	skeleton.loadBone(&hand);
+
+	// ---------------- loop -------------------
 	do{
 
 		// Measure speed
@@ -301,7 +341,7 @@ int main( void )
 		nbFrames++;
 		if (currentTime - lastTime >= 1.0){ // If last prinf() was more than 1sec ago
 			// printf and reset
-			printf("%f ms/frame\n", 1000.0 / double(nbFrames));
+			//printf("%f ms/frame\n", 1000.0 / double(nbFrames));
 			nbFrames = 0;
 			lastTime += 1.0;
 		}
@@ -312,8 +352,9 @@ int main( void )
 		// Use our shader
 		glUseProgram(programID);
 
-		/*
+		
 		//--------------- to use controls.cpp from plane lab -----------------------
+		/*
 		// Compute the MVP matrix from keyboard and mouse input
 		computeMatricesFromInputs();
 		glm::mat4 ProjectionMatrix = getProjectionMatrix();
@@ -347,7 +388,8 @@ int main( void )
 		//camMoved = false; // this line disables camera
 		if (camMoved)
 		{
-			ViewMatrix = glm::lookAt(vec3(5,-10, 45), glm::vec3(0, 20, 0), glm::vec3(0, 1, 0));
+			//ViewMatrix = glm::lookAt(vec3(5,-10, 45), glm::vec3(0, 20, 0), glm::vec3(0, 1, 0)); // lab 3 initial view matrix
+			ViewMatrix = glm::lookAt(vec3(10, 5, 30), glm::vec3(0, 5, 0), glm::vec3(0, 1, 0)); // lab 4 initial view matrix
 			glm::quat view_rotation(radians(view_angles));
 			ViewOrientation = ViewOrientation * view_rotation;
 			ViewRotationMatrix = toMat4(ViewOrientation);
@@ -357,8 +399,16 @@ int main( void )
 
 		//------------- Let's Draw! -----------------------
 		drawSkeleton(skeleton, ProjectionMatrix, ViewMatrix);
+		drawTarget(ProjectionMatrix, ViewMatrix, targetModelMatrix);
+
 
 		checkKeys(ProjectionMatrix, ViewMatrix, deltaTime);
+
+		//if (updated)
+		//{
+			CCD();
+			updated = false;
+		//}
 
 		glDisableVertexAttribArray(0);
 		glDisableVertexAttribArray(1);
@@ -384,16 +434,42 @@ int main( void )
 	return 0;
 }
 
+
+void CCD()
+{
+	vec3 base = upperArm.pivotPoint;
+	vec3 targetVector = vec3(targetPos - hand.pivotPoint);
+	vec3 endEffector = hand.endEffector;
+	vec3 endEffectorVector = vec3(endEffector - hand.pivotPoint);
+	targetVector = normalize(targetVector);
+	endEffectorVector = normalize(endEffectorVector);
+	float angleBetween = acos(dot(targetVector, endEffectorVector));
+	//std::cout << "angleBetween " << angleBetween << std::endl;
+
+	skeleton.update(&hand, nullVec, angleBetween, axisZ);
+
+	targetVector = vec3(targetPos - lowerArm.pivotPoint);
+	
+
+}
+
 void drawSkeleton(Skeleton skeleton, mat4 ProjectionMatrix, mat4 ViewMatrix)
 {
 	for (int i = 0; i < skeleton.numBones; i++)
 	{
-		ModelMatrix = skeleton.myBone[i]->boneModel;
+		ModelMatrix = skeleton.myBone[i]->modelMatrix;
 		MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;
 		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
 		glDrawArrays(GL_TRIANGLES, 0, vertices.size());
 		
 	}
+}
+
+void drawTarget(mat4 ProjectionMatrix, mat4 ViewMatrix, mat4 targetModelMatrix)
+{
+	MVP = ProjectionMatrix * ViewMatrix * targetModelMatrix;
+	glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+	glDrawArrays(GL_TRIANGLES, 0, vertices.size());
 }
 
 
@@ -430,6 +506,8 @@ void playAnimation(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime)
 
 void checkKeys(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime)
 {
+	// Lab 3 Hand controls
+	/*
 	// manually wave
 	if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS)
 	{
@@ -485,7 +563,7 @@ void checkKeys(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime)
 	if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS)
 	{
 		skeleton.update(&bone[4], vec3(0, 0, 0), -rotAngle, axisX);
-	}
+	} 
 
 	//middle root
 	if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_N) == GLFW_PRESS)
@@ -618,7 +696,70 @@ void checkKeys(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime)
 	{
 		skeleton.update(&bone[15], vec3(0, 0, 0), -rotAngle, axisX);
 	}
-	
+	*/
+
+	// lab 4 controls
+
+	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+	{
+		skeleton.update(&upperArm, left, 0, axisZ);
+		updated = true;
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+	{
+		skeleton.update(&upperArm, right, 0, axisZ);
+		updated = true;
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS)
+	{
+		skeleton.update(&lowerArm, left, 0, axisZ);
+		updated = true;
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS)
+	{
+		skeleton.update(&lowerArm, right, 0, axisZ);
+		updated = true;
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+	{
+		skeleton.update(&upperArm, nullVec, rotAngle, axisZ);
+		updated = true;
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+	{
+		skeleton.update(&upperArm, nullVec, -rotAngle, axisZ);
+		updated = true;
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS)
+	{
+		skeleton.update(&lowerArm, nullVec, rotAngle, axisZ);
+		updated = true;
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS)
+	{
+		skeleton.update(&lowerArm, nullVec, -rotAngle, axisZ);
+		updated = true;
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
+	{
+		skeleton.update(&hand, nullVec, rotAngle, axisZ);
+		updated = true;
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS)
+	{
+		skeleton.update(&hand, nullVec, -rotAngle, axisZ);
+		updated = true;
+	}
+
 	//---------- Camera Controls -----------------------
 	if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS){
 		view_angles = vec3(0, ViewRotationAngle, 0);
