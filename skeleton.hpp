@@ -22,7 +22,7 @@
 #include <common/bone.hpp>
 
 //#define NUMBONES 16
-#define NUMBONES 3
+#define NUMBONES 4
 
 class Skeleton {
 public:

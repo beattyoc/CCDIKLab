@@ -30,24 +30,23 @@ using namespace glm;
 #include <common/skeleton.hpp>
 
 //#define NUMBONES 16
-#define NUMBONES 3
+#define NUMBONES 4
 
 glm::mat4 ViewMatrix, ModelMatrix, ProjectionMatrix, TranslationMatrix, RotationMatrix, ScalingMatrix, MVP, targetTranslationMatrix, targetModelMatrix;
 GLuint MatrixID, Texture, TextureID, vertexbuffer, uvbuffer, VertexArrayID, programID;
 std::vector<glm::vec3> vertices;
-bool updated = false;
+bool updated = true;
 
 void drawBone(Bone bone, mat4 ProjectionMatrix, mat4 ViewMatrix);
 void drawSkeleton(Skeleton skeleton, mat4 ProjectionMatrix, mat4 ViewMatrix);
 void checkKeys(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime);
-void playAnimation(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime);
 void CCD();
-void drawTarget(mat4 ProjectionMatrix, mat4 ViewMatrix, mat4 targetModelMatrix);
+void drawTarget(mat4 ProjectionMatrix, mat4 ViewMatrix);
 
 Bone bone[NUMBONES];
 Skeleton skeleton = Skeleton(NUMBONES);
 
-Bone lowerArm, upperArm, hand;
+Bone lowerArm, upperArm, hand, tip;
 
 
 //----- Camera Variables --------
@@ -60,15 +59,17 @@ bool camMoved = true;
 //------ Transformations -------
 float rotAngle = 0.005f;
 glm::vec3 nullVec(0, 0, 0);
-glm::vec3 left(-0.1, 0, 0);
-glm::vec3 right(0.1, 0, 0);
-glm::vec3 back(0, 0, -0.1);
-glm::vec3 forth(0, 0, 0.1);
+glm::vec3 left(-0.01, 0, 0);
+glm::vec3 right(0.01, 0, 0);
+glm::vec3 up(0, 0.01, 0);
+glm::vec3 down(0, -0.01, 0);
+glm::vec3 back(0, 0, -0.01);
+glm::vec3 forth(0, 0, 0.01);
 glm::vec3 axisX(1, 0, 0);
 glm::vec3 axisY(0, 1, 0);
 glm::vec3 axisZ(0, 0, 1);
 
-glm::vec3 targetPos(4.0f, 6.0f, 0.0f);
+glm::vec3 targetPos(8.0f, 8.0f, 8.0f);
 glm::vec3 targetScale(0.25f, 0.25f, 0.25f);
 
 int main( void )
@@ -142,6 +143,8 @@ int main( void )
 	std::vector<glm::vec2> uvs;
 	std::vector<glm::vec3> normals; // Won't be used at the moment.
 	bool res = loadOBJ("cubeBase.obj", vertices, uvs, normals);
+
+	//bool tip = loadOBJ("cubeTip.obj", vertices, uvs, normals);
 
 	// Load it into a VBO
 
@@ -246,6 +249,7 @@ int main( void )
 	upperArm = Bone(0, vec3(0, 0, 0), scale, vec3(0,0,0));
 	lowerArm = Bone(1, vec3(0, 2, 0), scale, vec3(0, -2, 0));
 	hand = Bone(2, vec3(0, 4, 0), scale, vec3(0, -4, 0));
+	tip = Bone(3, vec3(0, 6, 0), vec3(0.25, 0.25, 0.25), vec3(0, -6, 0));
 
 	//----------------- Make relationships ----------------
 	// lab 3 bone relationships
@@ -308,13 +312,18 @@ int main( void )
 
 	// lab 4 relationships
 	//upperArm.isRoot = true;
+	upperArm.addChild(&tip);
 	upperArm.addChild(&hand);
 	upperArm.addChild(&lowerArm);
 
 	lowerArm.addParent(&upperArm);
+	lowerArm.addChild(&tip);
 	lowerArm.addChild(&hand);
 
 	hand.addParent(&lowerArm);
+	hand.addChild(&tip);
+
+	tip.addParent(&hand);
 
 	//------------------ Load Skeleton ------------------------
 	// lab 3 skeleton
@@ -330,6 +339,7 @@ int main( void )
 	skeleton.loadBone(&upperArm);
 	skeleton.loadBone(&lowerArm);
 	skeleton.loadBone(&hand);
+	skeleton.loadBone(&tip);
 
 	// ---------------- loop -------------------
 	do{
@@ -397,18 +407,19 @@ int main( void )
 			camMoved = false;
 		}
 
+		//update target
+		targetTranslationMatrix = translate(mat4(1.0), targetPos);
+
 		//------------- Let's Draw! -----------------------
 		drawSkeleton(skeleton, ProjectionMatrix, ViewMatrix);
-		drawTarget(ProjectionMatrix, ViewMatrix, targetModelMatrix);
+		drawTarget(ProjectionMatrix, ViewMatrix);
 
 
 		checkKeys(ProjectionMatrix, ViewMatrix, deltaTime);
 
 		//if (updated)
-		//{
+		if (targetPos != tip.pivotPoint)
 			CCD();
-			updated = false;
-		//}
 
 		glDisableVertexAttribArray(0);
 		glDisableVertexAttribArray(1);
@@ -437,20 +448,87 @@ int main( void )
 
 void CCD()
 {
-	vec3 base = upperArm.pivotPoint;
-	vec3 targetVector = vec3(targetPos - hand.pivotPoint);
-	vec3 endEffector = hand.endEffector;
-	vec3 endEffectorVector = vec3(endEffector - hand.pivotPoint);
-	targetVector = normalize(targetVector);
-	endEffectorVector = normalize(endEffectorVector);
-	float angleBetween = acos(dot(targetVector, endEffectorVector));
-	//std::cout << "angleBetween " << angleBetween << std::endl;
+	vec3 targetVector, endEffector, endEffectorVector, rotAxis;
+	float angle;
+	endEffector = tip.pivotPoint;
+		
+	// round 1
+	if (targetPos != endEffector)
+	{
+		targetVector = vec3(vec3(targetPos.x, targetPos.y, targetPos.z) - vec3(hand.pivotPoint.x, hand.pivotPoint.y, hand.pivotPoint.z)); // direction B
+		endEffectorVector = vec3(vec3(endEffector.x, endEffector.y, endEffector.z) - vec3(hand.pivotPoint.x, hand.pivotPoint.y, hand.pivotPoint.z)); // direction A
+		angle = acos(dot(normalize(targetVector), normalize(endEffectorVector))); // angle between
+		//std::cout << "angle " << angle << std::endl;
+		rotAxis = vec3(cross(normalize(targetVector), normalize(endEffectorVector))); // rotation axis
+		//std::cout << "rotAxis " << rotAxis.x << " " << rotAxis.y << " " << rotAxis.z << std::endl;
+		if (angle > 0)
+			skeleton.update(&hand, nullVec, -angle, rotAxis);
+	}
 
-	skeleton.update(&hand, nullVec, angleBetween, axisZ);
+	// round 2 // should probably iterate through these in main do loop
+	endEffector = tip.pivotPoint;
+	if (targetPos != endEffector)
+	{
+		targetVector = vec3(vec3(targetPos.x, targetPos.y, targetPos.z) - vec3(lowerArm.pivotPoint.x, lowerArm.pivotPoint.y, lowerArm.pivotPoint.z));
+		endEffectorVector = vec3(vec3(endEffector.x, endEffector.y, endEffector.z) - vec3(lowerArm.pivotPoint.x, lowerArm.pivotPoint.y, lowerArm.pivotPoint.z));
+		angle = acos(dot(normalize(targetVector), normalize(endEffectorVector)));
+		rotAxis = vec3(cross(normalize(targetVector), normalize(endEffectorVector)));
+		if (angle > 0)
+			skeleton.update(&lowerArm, nullVec, -angle, rotAxis);
+	}
 
-	targetVector = vec3(targetPos - lowerArm.pivotPoint);
+	endEffector = tip.pivotPoint;
+	if (targetPos != endEffector)
+	{
+		targetVector = vec3(vec3(targetPos.x, targetPos.y, targetPos.z) - vec3(upperArm.pivotPoint.x, upperArm.pivotPoint.y, upperArm.pivotPoint.z));
+		endEffectorVector = vec3(vec3(endEffector.x, endEffector.y, endEffector.z) - vec3(upperArm.pivotPoint.x, upperArm.pivotPoint.y, upperArm.pivotPoint.z));
+		angle = acos(dot(normalize(targetVector), normalize(endEffectorVector)));
+		rotAxis = vec3(cross(normalize(targetVector), normalize(endEffectorVector)));
+		if (angle > 0)
+			skeleton.update(&upperArm, nullVec, -angle, rotAxis);
+	}
 	
 
+	updated = false;
+	// x axis 
+	/*
+	targetVector = vec3(vec3(0, targetPos.y, targetPos.z) - vec3(0, hand.pivotPoint.y, hand.pivotPoint.z));
+	endEffectorVector = vec3(vec3(0, endEffector.y, endEffector.z) - vec3(0, hand.pivotPoint.y, hand.pivotPoint.z));
+	angle = acos(dot(normalize(targetVector), normalize(endEffectorVector)));
+	if (angle != 0 && angle > 0)
+	{
+		std::cout << "angle X " << angle << std::endl;
+		updated = false;
+		skeleton.update(&hand, nullVec, angle, axisX);
+	}
+	
+	
+	// y axis
+	
+	targetVector = vec3(vec3(targetPos.x, 0, targetPos.z) - vec3(hand.pivotPoint.x, 0, hand.pivotPoint.z));
+	endEffectorVector = vec3(vec3(endEffector.x, 0, endEffector.z) - vec3(hand.pivotPoint.x, 0, hand.pivotPoint.z));
+	angle = acos(dot(normalize(targetVector), normalize(endEffectorVector)));
+	if (angle != 0 && angle > 0)
+	{
+		std::cout << "angle Y " << angle << std::endl;
+		updated = false;
+		skeleton.update(&hand, nullVec, angle, axisY);
+	}
+	
+	
+	// z axis
+	
+	targetVector = vec3(vec3(targetPos.x, targetPos.y, 0) - vec3(hand.pivotPoint.x, hand.pivotPoint.y, 0));
+	endEffectorVector = vec3(vec3(endEffector.x, endEffector.y, 0) - vec3(hand.pivotPoint.x, hand.pivotPoint.y, 0));
+	angle = acos(dot(normalize(targetVector), normalize(endEffectorVector)));
+	if (angle != 0 && angle > 0)
+	{
+		std::cout << "angle Z " << angle << std::endl;
+		updated = false;
+		skeleton.update(&hand, nullVec, angle, axisZ);
+	}
+	*/
+	
 }
 
 void drawSkeleton(Skeleton skeleton, mat4 ProjectionMatrix, mat4 ViewMatrix)
@@ -461,48 +539,17 @@ void drawSkeleton(Skeleton skeleton, mat4 ProjectionMatrix, mat4 ViewMatrix)
 		MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;
 		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
 		glDrawArrays(GL_TRIANGLES, 0, vertices.size());
-		
 	}
 }
 
-void drawTarget(mat4 ProjectionMatrix, mat4 ViewMatrix, mat4 targetModelMatrix)
+void drawTarget(mat4 ProjectionMatrix, mat4 ViewMatrix)
 {
+	targetModelMatrix = targetTranslationMatrix * mat4(1.0) * scale(mat4(), targetScale);
 	MVP = ProjectionMatrix * ViewMatrix * targetModelMatrix;
 	glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
 	glDrawArrays(GL_TRIANGLES, 0, vertices.size());
 }
 
-
-void playAnimation(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime)
-{
-	float time = glfwGetTime();
-	//wave
-	//bone[0].counter = 0;
-	//while (bone[0].counter < 100)
-	float timeElapsed = 0.0f;
-
-	//while (timeElapsed < 1)
-	{
-		skeleton.update(&bone[0], vec3(0, 0, 0), sin(time*15)/100, axisZ);
-		drawSkeleton(skeleton, ProjectionMatrix, ViewMatrix);
-		//bone[0].counter++;
-		timeElapsed += deltaTime;
-	}
-	/*while (bone[0].counter > -100)
-	{
-		skeleton.update(&bone[0], vec3(0, 0, 0), -rotAngle*deltaTime, axisZ);
-		drawSkeleton(skeleton, ProjectionMatrix, ViewMatrix);
-		bone[0].counter--;
-	}
-	while (bone[0].counter != 0)
-	{
-		skeleton.update(&bone[0], vec3(0, 0, 0), rotAngle*deltaTime, axisZ);
-		drawSkeleton(skeleton, ProjectionMatrix, ViewMatrix);
-		bone[0].counter++;
-	}*/
-
-	//move fingers
-}
 
 void checkKeys(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime)
 {
@@ -699,7 +746,7 @@ void checkKeys(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime)
 	*/
 
 	// lab 4 controls
-
+/*
 	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
 	{
 		skeleton.update(&upperArm, left, 0, axisZ);
@@ -757,6 +804,33 @@ void checkKeys(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime)
 	if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS)
 	{
 		skeleton.update(&hand, nullVec, -rotAngle, axisZ);
+		updated = true;
+	}
+	*/
+
+	// target controls
+	if ((glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS) && (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS)){
+		targetPos += right;
+		updated = true;
+	}
+	if ((glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS) && (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS)){
+		targetPos += left;
+		updated = true;
+	}
+	if ((glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS) && (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS)){
+		targetPos += up;
+		updated = true;
+	}
+	if ((glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS) && (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS)){
+		targetPos += down;
+		updated = true;
+	}
+	if ((glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS) && (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS)){
+		targetPos += back;
+		updated = true;
+	}
+	if ((glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS) && (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS)){
+		targetPos += forth;
 		updated = true;
 	}
 

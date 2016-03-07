@@ -34,7 +34,7 @@ public:
 	glm::vec3 posOffset;
 	glm::vec3 pivotPoint;
 	glm::vec3 endEffector;
-	glm::vec3 rotAngles;
+	glm::vec3 localAngles;
 	glm::vec3 globalAngles;
 	glm::mat4 RotationMatrix;
 	glm::mat4 ScalingMatrix;
@@ -51,9 +51,9 @@ public:
 	void updateBone(glm::vec3 translation, float rotation, glm::vec3 axis);
 	void parentHasMoved(glm::vec3 translation, float rotation, glm::vec3 axis);
 	void updateEndEffector(glm::vec3 translation, float rotation, glm::vec3 axis);
-	void updateRotAngles(float rotation, glm::vec3 axis);
+	void updateLocalAngles(float rotation, glm::vec3 axis);
 	void updateGlobalAngles(float rotation, glm::vec3 axis);
-	float getRotAngle(glm::vec3 axis);
+	//float getlocalAngle(glm::vec3 axis);
 
 };
 
