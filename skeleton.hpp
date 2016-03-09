@@ -21,8 +21,7 @@
 #include <common/objloader.hpp>
 #include <common/bone.hpp>
 
-//#define NUMBONES 16
-#define NUMBONES 4
+#define NUMBONES 7
 
 class Skeleton {
 public:

@@ -26,19 +26,19 @@ class Bone
 public:
 	Bone *parent;
 	Bone *child;
+
 	std::vector<Bone*> children;
 	int boneID;
-	glm::mat4 modelMatrix;
-	glm::mat4 TranslationMatrix;
+	bool isRoot;
+
 	glm::vec3 negOffset;
 	glm::vec3 posOffset;
 	glm::vec3 pivotPoint;
-	glm::vec3 endEffector;
-	glm::vec3 localAngles;
-	glm::vec3 globalAngles;
+
 	glm::mat4 RotationMatrix;
 	glm::mat4 ScalingMatrix;
-	bool isRoot;
+	glm::mat4 modelMatrix;
+	glm::mat4 TranslationMatrix;
 
 	Bone();
 	Bone(int ID, glm::vec3 T, glm::vec3 S, glm::vec3 O);
@@ -50,11 +50,6 @@ public:
 	bool hasChild();
 	void updateBone(glm::vec3 translation, float rotation, glm::vec3 axis);
 	void parentHasMoved(glm::vec3 translation, float rotation, glm::vec3 axis);
-	void updateEndEffector(glm::vec3 translation, float rotation, glm::vec3 axis);
-	void updateLocalAngles(float rotation, glm::vec3 axis);
-	void updateGlobalAngles(float rotation, glm::vec3 axis);
-	//float getlocalAngle(glm::vec3 axis);
-
 };
 
 #endif

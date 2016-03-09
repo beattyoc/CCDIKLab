@@ -29,7 +29,6 @@ void Skeleton::update(Bone *bone, glm::vec3 translation, float rotation, glm::ve
 	if (myBone[ID]->isRoot)
 		updateRoot(translation, rotation, axis);
 	
-	//else
 	myBone[ID]->updateBone(translation, rotation, axis);
 
 	// Recursively update children
@@ -42,31 +41,12 @@ void Skeleton::update(Bone *bone, glm::vec3 translation, float rotation, glm::ve
 
 void Skeleton::updateRoot(glm::vec3 translation, float rotation, glm::vec3 axis)
 {
-	std::cout << "update root\n";
 	root->updateBone(translation, rotation, axis);
-
-	update(myBone[1], translation, rotation, axis);
-
-	// lab 3 update below
-	// tell each finger root
-	/*
-	update(myBone[1], translation, rotation, axis);
-	update(myBone[4], translation, rotation, axis);
-	update(myBone[7], translation, rotation, axis);
-	update(myBone[10], translation, rotation, axis);
-	update(myBone[13], translation, rotation, axis);
-	*/
-	/*
-	tellChild(myBone[1]);
-	tellChild(myBone[4]);
-	tellChild(myBone[7]);
-	tellChild(myBone[10]);
-	tellChild(myBone[13]);
-	*/
+	//update(myBone[1], translation, rotation, axis);
+	tellChild(myBone[1], translation, rotation, axis);
 
 	return;
 }
-
 
 // inform children that their parent has moved
 void Skeleton::tellChild(Bone *bone, glm::vec3 translation, float rotation, glm::vec3 axis)
@@ -76,6 +56,5 @@ void Skeleton::tellChild(Bone *bone, glm::vec3 translation, float rotation, glm:
 	if (myBone[ID]->hasChild())
 		tellChild(myBone[ID]->child, translation, rotation, axis);
 }
-
 
 Skeleton::~Skeleton(){}
