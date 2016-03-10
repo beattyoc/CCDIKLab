@@ -4,12 +4,10 @@
 Skeleton::Skeleton()
 {
 	numBones = 0;
-	//root = Bone();
 }
 
 Skeleton::Skeleton(int nBones)
 {
-	//root = Bone();
 	numBones = nBones;
 	std::cout << "Skeleton with " << numBones << " bones made.\n";
 }

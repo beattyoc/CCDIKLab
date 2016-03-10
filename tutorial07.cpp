@@ -41,7 +41,7 @@ void drawSkeleton(Skeleton skeleton, mat4 ProjectionMatrix, mat4 ViewMatrix);
 void checkKeys(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime);
 void CCD();
 void drawTarget(mat4 ProjectionMatrix, mat4 ViewMatrix);
-void play();
+vec3 bezierCurve(float t, vec3 p0, vec3 p1, vec3 p2, vec3 p3);
 
 Bone bone[NUMBONES];
 Skeleton skeleton = Skeleton(NUMBONES);
@@ -66,8 +66,16 @@ glm::vec3 axisX(1, 0, 0);
 glm::vec3 axisY(0, 1, 0);
 glm::vec3 axisZ(0, 0, 1);
 
-glm::vec3 targetPos(8.0f, 8.0f, 8.0f);
+// --------- Target info ---------
+glm::vec3 targetPos(6.0f, 10.0f, 8.0f);
 glm::vec3 targetScale(0.1f, 0.1f, 0.1f);
+
+//------- Bezier Curve Points ------
+vec3 p0(10, 10, 0);
+vec3 p1(0, 7, -10);
+vec3 p2(-12, 6, -5);
+vec3 p3(-8, 8, 5);
+bool followCurve = false;
 
 int main( void )
 {
@@ -138,7 +146,7 @@ int main( void )
 	// Read our .obj file
 	std::vector<glm::vec2> uvs;
 	std::vector<glm::vec3> normals; // Won't be used at the moment.
-	bool res = loadOBJ("cubeBase.obj", vertices, uvs, normals);
+	bool res = loadOBJ("sphere.obj", vertices, uvs, normals);
 
 	// Load it into a VBO
 
@@ -239,11 +247,13 @@ int main( void )
 
 
 
+
 		//------------- Update Camera --------------------
+
 		//camMoved = false; // this line disables camera
 		if (camMoved)
 		{
-			ViewMatrix = glm::lookAt(vec3(10, 5, 30), glm::vec3(0, 5, 0), glm::vec3(0, 1, 0)); // lab 4 initial view matrix
+			ViewMatrix = glm::lookAt(vec3(10, 5, 30), glm::vec3(0, 8, 0), glm::vec3(0, 1, 0)); // lab 4 initial view matrix
 			glm::quat view_rotation(radians(view_angles));
 			ViewOrientation = ViewOrientation * view_rotation;
 			ViewRotationMatrix = toMat4(ViewOrientation);
@@ -252,29 +262,34 @@ int main( void )
 		}
 
 
+
 		//update target
 		targetTranslationMatrix = translate(mat4(1.0), targetPos);
 
 
 
-		//------------- Let's Draw! -----------------------
+		//------------- Draw -----------------------
 		drawSkeleton(skeleton, ProjectionMatrix, ViewMatrix);
 		drawTarget(ProjectionMatrix, ViewMatrix);
+
+
 
 		// check for user input
 		checkKeys(ProjectionMatrix, ViewMatrix, deltaTime);
 
 
-		//if (updated)
-		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-		{
-			play();
-		}
+		// ------ follow curve ----------------
+		float t = glm::mod((float)currentTime, 5.0f) / (5.0f);
+
+		if (followCurve)
+			targetPos = bezierCurve(t, p0, p1, p2, p3);
+	
 	
 		// if end effector is not at target, calculate CCD
 		if (targetPos != bone[NUMBONES - 1].pivotPoint)
 			CCD();
 			
+
 
 		glDisableVertexAttribArray(0);
 		glDisableVertexAttribArray(1);
@@ -302,31 +317,34 @@ int main( void )
 
 
 // ----- Cyclic Coordinate Descent ---------------
+// Updates all bones in skeleton according to CCD algorithm
 void CCD()
 {
 	vec3 targetVector, endEffector, endEffectorVector, rotAxis;
 	float angleBetween;
 	endEffector = bone[NUMBONES - 1].pivotPoint;
-
 	for (int i = NUMBONES - 2; i > -1; i--)
 	{
 		if (targetPos != endEffector) // if end effector has reached target stop
 		{
-			targetVector = vec3(vec3(targetPos.x, targetPos.y, targetPos.z) - vec3(bone[i].pivotPoint.x, bone[i].pivotPoint.y, bone[i].pivotPoint.z)); 
-			endEffectorVector = vec3(vec3(endEffector.x, endEffector.y, endEffector.z) - vec3(bone[i].pivotPoint.x, bone[i].pivotPoint.y, bone[i].pivotPoint.z)); 
+			targetVector = vec3(vec3(targetPos.x, targetPos.y, targetPos.z) - vec3(bone[i].pivotPoint.x, bone[i].pivotPoint.y, bone[i].pivotPoint.z));
+			endEffectorVector = vec3(vec3(endEffector.x, endEffector.y, endEffector.z) - vec3(bone[i].pivotPoint.x, bone[i].pivotPoint.y, bone[i].pivotPoint.z));
 			angleBetween = acos(dot(normalize(targetVector), normalize(endEffectorVector))); // angle between the EEvector and Tvector
 			rotAxis = vec3(cross(normalize(targetVector), normalize(endEffectorVector))); // the normal of the plane that EEvector and Tvector sit on
-			
-			if (angleBetween > 0) // to counteract if the angle is NAN 
+
+			if (angleBetween >= 0 || angleBetween < 0) // to counteract if the angle is NAN 
 				skeleton.update(&bone[i], nullVec, angleBetween, rotAxis);
+
+			else std::cout << angleBetween << std::endl;
 		}
 		endEffector = bone[NUMBONES - 1].pivotPoint;
 	}
 }
 
-void play()
+// returns a position on the curve relative to t
+vec3 bezierCurve(float t, vec3 p0, vec3 p1, vec3 p2, vec3 p3)
 {
-
+	return (pow((1 - t), 3) * p0) + (3 * t*pow((1 - t), 2) * p1) + (3 * t*pow((1 - t), 2) * p2) + (pow(t, 3) * p3);
 }
 
 void drawSkeleton(Skeleton skeleton, mat4 ProjectionMatrix, mat4 ViewMatrix)
@@ -350,6 +368,13 @@ void drawTarget(mat4 ProjectionMatrix, mat4 ViewMatrix)
 
 void checkKeys(mat4 ProjectionMatrix, mat4 ViewMatrix, float deltaTime)
 {
+	// ---------- Curve controls ---------------------------
+	if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+		followCurve = true;
+
+	if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS)
+		followCurve = false;
+
 	// ------------ target controls --------------------------
 	if ((glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS) && (glfwGetKey(window, GLFW_KEY_9) == GLFW_PRESS)){
 		targetPos += right;
